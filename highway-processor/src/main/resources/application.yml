@@ -1,0 +1,5 @@
+spring:
+  application:
+    name: highway-processor
+server:
+  port: 8082
