@@ -1,5 +1,33 @@
 spring:
   application:
     name: highway-processor
+
+  kafka:
+    bootstrap-servers: localhost:9092
+
+    streams:
+      application-id: highway-processor
+      properties:
+        processing.guarantee: exactly_once_v2
+        replication.factor: 1
+
 server:
   port: 8082
+
+app:
+  highway:
+    input-topic: camera-simulator
+    alerts-topic: highway-alerts
+    stolen-vehicles-topic: stolen-vehicles
+
+    speeding:
+      speed-limit-kmh: 120
+      max-interval: 30s
+      distances-km:
+        GANTRY-A->GANTRY-B: 0.2
+        GANTRY-B->GANTRY-C: 0.3
+
+    traffic-jam:
+      window: 1m
+      grace-period: 10s
+      threshold: 15

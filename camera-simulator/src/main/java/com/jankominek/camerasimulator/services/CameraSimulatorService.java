@@ -1,6 +1,6 @@
 package com.jankominek.camerasimulator.services;
 
-import com.jankominek.camerasimulator.GantryScanEvent;
+import com.jankominek.highwaycontracts.dto.GantryScanEvent;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.kafka.core.KafkaTemplate;

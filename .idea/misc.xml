@@ -8,6 +8,7 @@
         <option value="$PROJECT_DIR$/camera-simulator/pom.xml" />
         <option value="$PROJECT_DIR$/highway-processor/pom.xml" />
         <option value="$PROJECT_DIR$/notification-service/pom.xml" />
+        <option value="$PROJECT_DIR$/highway-contracts/pom.xml" />
       </list>
     </option>
   </component>
