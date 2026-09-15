@@ -17,6 +17,7 @@ server:
 app:
   highway:
     input-topic: camera-simulator
+    speeding-alerts-topic: speeding-alerts
     alerts-topic: highway-alerts
     stolen-vehicles-topic: stolen-vehicles
 
@@ -24,8 +25,8 @@ app:
       speed-limit-kmh: 120
       max-interval: 30s
       distances-km:
-        GANTRY-A->GANTRY-B: 0.2
-        GANTRY-B->GANTRY-C: 0.3
+        GANTRYAB: 0.5
+        GANTRYBC: 0.5
 
     traffic-jam:
       window: 1m

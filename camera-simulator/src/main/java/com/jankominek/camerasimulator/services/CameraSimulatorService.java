@@ -1,5 +1,6 @@
 package com.jankominek.camerasimulator.services;
 
+import com.jankominek.highwaycontracts.dto.GantryName;
 import com.jankominek.highwaycontracts.dto.GantryScanEvent;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
@@ -20,13 +21,13 @@ public class CameraSimulatorService {
     private final KafkaTemplate<String, GantryScanEvent> kafkaTemplate;
     private int counter = 0;
     private final Random random = new Random();
-    private final List<String> gantryIds = List.of("GANTRY-A", "GANTRY-B", "GANTRY-C");
+    private final List<String> gantryIds = List.of("A", "B", "C");
 
     private void sendGantryScanEvent(GantryScanEvent gantryScanEvent) {
         kafkaTemplate.send(topic, gantryScanEvent.getPlateNumber(), gantryScanEvent);
     }
 
-    @Scheduled(fixedRate = 5000) // Wykonuje się co 5 sekundy
+    @Scheduled(fixedRate = 5000) // Wykonuje się co 10 sekundy
     public void generateTraffic() {
         counter++;
 
@@ -36,7 +37,7 @@ public class CameraSimulatorService {
         } else if (counter % 7 == 0) {
             triggerStolenCarScenario();
         } else if (counter % 12 == 0) {
-            triggerTrafficJamScenario();
+//            triggerTrafficJamScenario();
         } else {
             generateNormalRandomTraffic();
         }
@@ -59,26 +60,35 @@ public class CameraSimulatorService {
     // 2. Scenariusz: Przekroczenie prędkości
     private void triggerSpeedingScenario() {
         String plate = "WA-SPEED1";
-        long now = Instant.now().toEpochMilli();
 
-        sendGantryScanEvent(GantryScanEvent.builder()
-                        .gantryId("GANTRY-A")
-                        .plateNumber(plate)
-                        .timestamp(now)
-                        .build());
+        long firstTimestamp =
+                Instant.now().toEpochMilli();
 
-        // Skan na Bramce B chwilę później (ta sama rejestracja!)
-        new Thread(() -> {
-            try {
-                Thread.sleep(3000); // 3 sekundy później
-                sendGantryScanEvent(GantryScanEvent.builder()
-                        .gantryId("GANTRY-B")
+        sendGantryScanEvent(
+                GantryScanEvent.builder()
+                        .gantryId("A")
                         .plateNumber(plate)
-                        .timestamp(Instant.now().toEpochMilli())
-                        .build());
-                System.out.println("🔥 [SCENARIUSZ] Wysyłano sekwencję przekroczenia prędkości dla: " + plate);
-            } catch (InterruptedException ignored) {}
-        }).start();
+                        .timestamp(firstTimestamp)
+                        .build()
+        );
+
+        sendGantryScanEvent(
+                GantryScanEvent.builder()
+                        .gantryId("B")
+                        .plateNumber(plate)
+                        .timestamp(firstTimestamp + 3_000)
+                        .build()
+        );
+
+        sendGantryScanEvent(
+                GantryScanEvent.builder()
+                        .gantryId("C")
+                        .plateNumber(plate)
+                        .timestamp(firstTimestamp + 6_000)
+                        .build()
+        );
+
+        System.out.println("🔥 [SCENARIUSZ] Wysyłano sekwencję przekroczenia prędkości dla: " + plate);
     }
 
     // 3. Scenariusz: Skradzione auto

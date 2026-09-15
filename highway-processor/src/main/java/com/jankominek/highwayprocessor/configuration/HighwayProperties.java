@@ -9,6 +9,7 @@ import java.util.Map;
 @ConfigurationProperties(prefix = "app.highway")
 public record HighwayProperties (
     String inputTopic,
+    String speedingAlertsTopic,
     String alertsTopic,
     String stolenVehiclesTopic,
     Speeding speeding,

@@ -1,13 +1,18 @@
 package com.jankominek.highwayprocessor.configuration;
 
+import com.jankominek.highwaycontracts.dto.AlertType;
 import com.jankominek.highwaycontracts.dto.GantryScanEvent;
 import com.jankominek.highwaycontracts.dto.HighwayAlert;
-import com.jankominek.highwaycontracts.dto.StolenVehicle;
+import com.jankominek.highwayprocessor.processor.SpeedingProcessor;
+import com.jankominek.highwayprocessor.processor.SpeedingProcessorSupplier;
 import org.apache.kafka.common.serialization.Serdes;
+import org.apache.kafka.streams.KeyValue;
 import org.apache.kafka.streams.StreamsBuilder;
 import org.apache.kafka.streams.kstream.Consumed;
 import org.apache.kafka.streams.kstream.KStream;
 import org.apache.kafka.streams.kstream.Produced;
+import org.apache.kafka.streams.kstream.Repartitioned;
+import org.apache.kafka.streams.state.Stores;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.kafka.annotation.EnableKafkaStreams;
@@ -16,33 +21,113 @@ import org.springframework.kafka.support.serializer.JacksonJsonSerde;
 @Configuration
 @EnableKafkaStreams
 public class HighwayTopology {
-    JacksonJsonSerde<GantryScanEvent> gantryScanSerde = new JacksonJsonSerde<>(GantryScanEvent.class);
-    JacksonJsonSerde<HighwayAlert> highwayAlertSerde = new JacksonJsonSerde<>(HighwayAlert.class);
-    JacksonJsonSerde<StolenVehicle> stolenVehiclesSerde = new JacksonJsonSerde<>(StolenVehicle.class);
 
     @Bean
-    public KStream<String, GantryScanEvent> highwayStream(StreamsBuilder streamsBuilder, HighwayProperties highwayProperties) {
-        KStream<String, GantryScanEvent> gantryScanStream = streamsBuilder.stream(
-                highwayProperties.inputTopic(),
-                Consumed.with(
+    public KStream<String, HighwayAlert> speedingStream(
+            StreamsBuilder builder,
+            HighwayProperties properties
+    ) {
+        JacksonJsonSerde<GantryScanEvent> scanSerde =
+                new JacksonJsonSerde<>(
+                        GantryScanEvent.class
+                );
+
+        JacksonJsonSerde<HighwayAlert> alertSerde =
+                new JacksonJsonSerde<>(
+                        HighwayAlert.class
+                );
+
+        builder.addStateStore(
+                Stores.keyValueStoreBuilder(
+                        Stores.persistentKeyValueStore(
+                        SpeedingProcessor.LAST_SCAN_STORE
+                        ),
                         Serdes.String(),
-                        gantryScanSerde
+                        new JacksonJsonSerde<>(
+                                GantryScanEvent.class
+                        )
                 )
         );
 
-        KStream<String, GantryScanEvent> validGantryScans = gantryScanStream.filter(
-                (key, event) -> event != null
-                && event.getPlateNumber() != null
-                && event.getGantryId() != null
+        KStream<String, GantryScanEvent> scans =
+                builder.stream(
+                        properties.inputTopic(),
+                        Consumed.with(
+                                Serdes.String(),
+                                scanSerde
+                        )
+                );
+
+        KStream<String, GantryScanEvent> validScans = scans.filter((key, event) ->
+                event != null
+                        && event.getPlateNumber() != null
+                        && !event.getPlateNumber()
+                        .isBlank()
+                        && event.getGantryId() != null
+                        && !event.getGantryId()
+                        .isBlank()
         );
 
-        validGantryScans.to(
-                "highway-processed",
+        validScans.to(
+                properties.alertsTopic(),
                 Produced.with(
                         Serdes.String(),
-                        gantryScanSerde)
+                        scanSerde
+                )
         );
 
-        return validGantryScans;
+        KStream<String, GantryScanEvent> scansByPlate = validScans
+                        .selectKey(
+                                (ignoredKey, event) ->
+                                        event.getPlateNumber()
+                        )
+                        .repartition(
+                                Repartitioned.with(
+                                        Serdes.String(),
+                                        scanSerde
+                                )
+                        );
+
+
+        KStream<String, HighwayAlert> stolenScans = scansByPlate
+                .filter((plateNumber, event) -> plateNumber.contains("STOLEN"))
+                .map((plateNumber, event) -> {
+                    HighwayAlert stolenVahicleAlert = HighwayAlert.fromGantryScanEvent(
+                            event,
+                            "Stolen vehicle detected",
+                            AlertType.STOLEN_VEHICLE
+                    );
+                    return new KeyValue<>(plateNumber, stolenVahicleAlert);
+                });
+
+        KStream<String, HighwayAlert> speedingAlerts =
+                scansByPlate.process(
+                        new SpeedingProcessorSupplier(
+                                properties.speeding()
+                        ),
+                        SpeedingProcessor.LAST_SCAN_STORE
+                ).peek((key, alert) ->
+                        System.out.println(
+                                "Speeding alert: " + alert
+                        )
+                );
+
+        stolenScans.to(
+                properties.stolenVehiclesTopic(),
+                Produced.with(
+                        Serdes.String(),
+                        alertSerde
+                )
+        );
+
+        speedingAlerts.to(
+                properties.speedingAlertsTopic(),
+                Produced.with(
+                        Serdes.String(),
+                        alertSerde
+                )
+        );
+
+        return speedingAlerts;
     }
 }
