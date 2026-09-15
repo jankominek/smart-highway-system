@@ -27,7 +27,7 @@ public class CameraSimulatorService {
         kafkaTemplate.send(topic, gantryScanEvent.getPlateNumber(), gantryScanEvent);
     }
 
-    @Scheduled(fixedRate = 5000) // Wykonuje się co 10 sekundy
+    @Scheduled(fixedRate = 10000) // Wykonuje się co 10 sekundy
     public void generateTraffic() {
         counter++;
 
@@ -37,7 +37,7 @@ public class CameraSimulatorService {
         } else if (counter % 7 == 0) {
             triggerStolenCarScenario();
         } else if (counter % 12 == 0) {
-//            triggerTrafficJamScenario();
+            triggerTrafficJamScenario();
         } else {
             generateNormalRandomTraffic();
         }

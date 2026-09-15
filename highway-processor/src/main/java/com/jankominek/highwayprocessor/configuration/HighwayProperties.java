@@ -12,6 +12,7 @@ public record HighwayProperties (
     String speedingAlertsTopic,
     String alertsTopic,
     String stolenVehiclesTopic,
+    String trafficJamAlertsTopic,
     Speeding speeding,
     TrafficJam trafficJam
 ) {

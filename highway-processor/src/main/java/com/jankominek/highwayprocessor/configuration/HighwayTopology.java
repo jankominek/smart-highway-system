@@ -8,10 +8,7 @@ import com.jankominek.highwayprocessor.processor.SpeedingProcessorSupplier;
 import org.apache.kafka.common.serialization.Serdes;
 import org.apache.kafka.streams.KeyValue;
 import org.apache.kafka.streams.StreamsBuilder;
-import org.apache.kafka.streams.kstream.Consumed;
-import org.apache.kafka.streams.kstream.KStream;
-import org.apache.kafka.streams.kstream.Produced;
-import org.apache.kafka.streams.kstream.Repartitioned;
+import org.apache.kafka.streams.kstream.*;
 import org.apache.kafka.streams.state.Stores;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -98,6 +95,41 @@ public class HighwayTopology {
                             AlertType.STOLEN_VEHICLE
                     );
                     return new KeyValue<>(plateNumber, stolenVahicleAlert);
+                });
+
+        KStream<Windowed<String>, Long> trafficJamScanKTable = validScans
+                .selectKey((ignoredKey, event) ->
+                        event.getGantryId()
+                )
+                .groupByKey(
+                        Grouped.with(
+                                Serdes.String(),
+                                scanSerde
+                        )
+                )
+                .windowedBy(
+                        TimeWindows.ofSizeAndGrace(
+                                properties.trafficJam().window(),
+                                properties.trafficJam().gracePeriod()
+                        )
+                ).count()
+                .suppress(Suppressed.untilWindowCloses(Suppressed.BufferConfig.unbounded()))
+                .toStream();
+
+        trafficJamScanKTable
+                .filter((windowedGantryId, count) ->
+                        count >= properties.trafficJam().threshold()
+                )
+                .map((windowedGantryId, count) -> {
+                    String gantryId = windowedGantryId.key();
+
+                    HighwayAlert trafficJamAlert = HighwayAlert.builder()
+                            .gantryId(gantryId)
+                            .message("Traffic jam detected")
+                            .vehicleCount(count)
+                            .type(AlertType.TRAFFIC_JAM)
+                            .build();
+                    return new KeyValue<>(gantryId, trafficJamAlert);
                 });
 
         KStream<String, HighwayAlert> speedingAlerts =

@@ -20,6 +20,7 @@ app:
     speeding-alerts-topic: speeding-alerts
     alerts-topic: highway-alerts
     stolen-vehicles-topic: stolen-vehicles
+    traffic-jam-alerts-topic: traffic-jam-alerts
 
     speeding:
       speed-limit-kmh: 120
