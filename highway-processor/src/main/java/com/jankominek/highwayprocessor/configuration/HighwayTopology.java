@@ -5,6 +5,7 @@ import com.jankominek.highwaycontracts.dto.GantryScanEvent;
 import com.jankominek.highwaycontracts.dto.HighwayAlert;
 import com.jankominek.highwayprocessor.processor.SpeedingProcessor;
 import com.jankominek.highwayprocessor.processor.SpeedingProcessorSupplier;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.kafka.common.serialization.Serdes;
 import org.apache.kafka.streams.KeyValue;
 import org.apache.kafka.streams.StreamsBuilder;
@@ -17,6 +18,7 @@ import org.springframework.kafka.support.serializer.JacksonJsonSerde;
 
 @Configuration
 @EnableKafkaStreams
+@Slf4j
 public class HighwayTopology {
 
     @Bean
@@ -65,11 +67,27 @@ public class HighwayTopology {
                         .isBlank()
         );
 
-        validScans.to(
+
+        KStream<String, HighwayAlert> normalTrafficAlerts =
+                validScans
+                .filter((ignoredKey, event) ->
+                    !event.getPlateNumber().contains("STOLEN"))
+                .map((ignoredKey, event) ->
+                        new KeyValue<>(
+                                event.getPlateNumber(),
+                                HighwayAlert.fromGantryScanEvent(
+                                        event,
+                                        "Normal traffic",
+                                        AlertType.NORMAL_TRAFFIC
+                                )
+                        )
+                );
+
+        normalTrafficAlerts.to(
                 properties.alertsTopic(),
                 Produced.with(
                         Serdes.String(),
-                        scanSerde
+                        alertSerde
                 )
         );
 
@@ -88,6 +106,12 @@ public class HighwayTopology {
 
         KStream<String, HighwayAlert> stolenScans = scansByPlate
                 .filter((plateNumber, event) -> plateNumber.contains("STOLEN"))
+                .peek((plateNumber, event) ->
+                    log.warn(
+                            "Invalid camera event rejected reason={} key={}",
+                            "missing_plate_number",
+                            plateNumber
+                    ))
                 .map((plateNumber, event) -> {
                     HighwayAlert stolenVahicleAlert = HighwayAlert.fromGantryScanEvent(
                             event,
@@ -116,7 +140,8 @@ public class HighwayTopology {
                 .suppress(Suppressed.untilWindowCloses(Suppressed.BufferConfig.unbounded()))
                 .toStream();
 
-        trafficJamScanKTable
+        KStream<String, HighwayAlert> trafficJamAlerts =
+                trafficJamScanKTable
                 .filter((windowedGantryId, count) ->
                         count >= properties.trafficJam().threshold()
                 )
@@ -124,13 +149,26 @@ public class HighwayTopology {
                     String gantryId = windowedGantryId.key();
 
                     HighwayAlert trafficJamAlert = HighwayAlert.builder()
+                            .id("traffic-jam:"
+                                    + gantryId
+                                    + ":"
+                                    + windowedGantryId.window().start())
                             .gantryId(gantryId)
+                            .detectedAt(windowedGantryId.window().end())
                             .message("Traffic jam detected")
                             .vehicleCount(count)
                             .type(AlertType.TRAFFIC_JAM)
                             .build();
                     return new KeyValue<>(gantryId, trafficJamAlert);
                 });
+
+        trafficJamAlerts.to(
+                properties.trafficJamAlertsTopic(),
+                Produced.with(
+                        Serdes.String(),
+                        alertSerde
+                )
+        );
 
         KStream<String, HighwayAlert> speedingAlerts =
                 scansByPlate.process(

@@ -3,6 +3,8 @@ package com.jankominek.camerasimulator.services;
 import com.jankominek.highwaycontracts.dto.GantryName;
 import com.jankominek.highwaycontracts.dto.GantryScanEvent;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.apache.kafka.clients.producer.RecordMetadata;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -14,6 +16,7 @@ import java.util.Random;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class CameraSimulatorService {
 
     @Value("${app.kafka.topic.name}")
@@ -24,10 +27,29 @@ public class CameraSimulatorService {
     private final List<String> gantryIds = List.of("A", "B", "C");
 
     private void sendGantryScanEvent(GantryScanEvent gantryScanEvent) {
-        kafkaTemplate.send(topic, gantryScanEvent.getPlateNumber(), gantryScanEvent);
+        kafkaTemplate.send(topic, gantryScanEvent.getPlateNumber(), gantryScanEvent)
+                .whenComplete((result, exception) -> {
+                  if(exception != null) {
+                      log.error(
+                              "Failed to publish camera event topic={} plate={}",
+                              topic,
+                              gantryScanEvent.getPlateNumber(),
+                              exception
+                      );
+                      return;
+                  }
+
+                    RecordMetadata record = result.getRecordMetadata();
+                  log.info(
+                          "Camera event published topic={} partition={} offset={}",
+                          record.topic(),
+                          record.partition(),
+                          record.offset()
+                  );
+                });
     }
 
-    @Scheduled(fixedRate = 10000) // Wykonuje się co 10 sekundy
+    @Scheduled(fixedRate = 1000) // Wykonuje się co 10 sekundy
     public void generateTraffic() {
         counter++;
 
